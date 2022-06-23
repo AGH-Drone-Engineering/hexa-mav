@@ -17,8 +17,11 @@ SHOOT_MSG = "SHOOT"
 PIN_STRZAL = 11
 PIN_1 = 9
 PIN_2 = 10
-DEVICE = 'com8'
-BAUD = 57600
+DEVICE = '<urzadzenie>'
+BAUD = 115200
+#BAUD = 57600
+#BAUD = 9600
+TARGET_ALTITUDE = 5
 
 thrd_num = 0
 conn = None
@@ -69,6 +72,26 @@ def strzelaj(kulka):
     moveServo(500, PIN_2)
     moveServo(500, PIN_1)
 
+def arm(force=21196):
+    the_connection.set_mode_auto()
+    the_connection.mav.command_long_send(the_connection.target_system, the_connection.target_component,
+                                                         mavutil.mavlink.MAV_CMD_COMPONENT_ARM_DISARM, 0, 1, force, 0, 0, 0, 0, 0)
+
+def disarm():
+    the_connection.mav.command_long_send(the_connection.target_system, the_connection.target_component,
+                                                         mavutil.mavlink.MAV_CMD_COMPONENT_ARM_DISARM, 0, 1, 21196, 0, 0, 0, 0, 0)
+    the_connection.set_mode_manual()
+    
+def chceck_ok():
+    return master.recv_match(type='COMMAND_ACK', blocking=True).to_dict()['result'] == 0
+
+def takeoff():
+    the_connection.mav.command_long_send(the_connection.target_system, the_connection.target_component,
+                                     mavutil.mavlink.MAV_CMD_NAV_TAKEOFF, 0, 0, 0, 0, 0, 0, 0, TARGET_ALTITUDE)
+def land():
+    the_connection.mav.command_long_send(the_connection.target_system, the_connection.target_component,
+                                     mavutil.mavlink.MAV_CMD_NAV_LAND, 0, 0, 0, 0, 0, 0, 0, 0)
+
 def watcher():
     global thrd_num
 
@@ -94,10 +117,13 @@ def start_ack_watcher(x):
 #the_connection = mavutil.mavlink_connection(DEVICE)
 the_connection = mavutil.mavlink_connection(DEVICE, BAUD)
 
+moveServo(1100, PIN_STRZAL)
+print("Ustawianie silnika na IDLE")
 the_connection.wait_heartbeat()
 print("Odebrano heartbeat")
 moveServo(1100, PIN_STRZAL)
-print("Serwo IDLE")
+#print("Serwo IDLE")
+
 
 with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sck:
     sck.bind((HOST, PORT))
@@ -132,6 +158,7 @@ with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sck:
                     else:
                         print("[OSTRZEZENIE] Odebrano niepoprawny format komendy", GOTO_MSG)
                     continue
+                    
                 if data.startswith(SHOOT_MSG):
                     if len(data) > len(SHOOT_MSG) + 1:
                         id_kulki = data[len(SHOOT_MSG) + 1:]
@@ -144,13 +171,20 @@ with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sck:
                     moveServo(int(data[len("SERVO") + 1:]),PIN_1)
                     print("Poruszam servem",map_servo(int(data[len("SERVO") + 1:])) , PIN_1)
 
+		if data == "FORCE-ARM":
+		     arm()
+
                 if data == "ARM":
-                    the_connection.mav.command_long_send(the_connection.target_system, the_connection.target_component,
-                                                         mavutil.mavlink.MAV_CMD_COMPONENT_ARM_DISARM, 0, 1, 21196, 0, 0, 0, 0, 0)
+                    arm(0)
+                    
                 if data == "DISARM":
-                    the_connection.mav.command_long_send(the_connection.target_system, the_connection.target_component,
-                                                         mavutil.mavlink.MAV_CMD_COMPONENT_ARM_DISARM, 0, 0, 0,0, 0, 0, 0, 0)
+                    disarm()
+                    
+                if data == "LAND":
+                    land()
+                
+                
 
             except ConnectionError:
-                print("Polaczenie zostalo zamkniete",map_servo(int(data[len("SERVO") + 1:])),PIN_1)
+                print("Polaczenie zostalo zamkniete")
                 break
