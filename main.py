@@ -4,7 +4,7 @@ import time
 from pymavlink import mavutil
 
 HOST = "127.0.0.1"
-PORT = 4343
+PORT = 4344
 
 global_destination = ""
 the_connection = None
@@ -47,8 +47,7 @@ def map_servo(x):
 def wait_conn():
     msg = None
     while not msg:
-       the_connection.mav.ping_send(
-            int(time.time() * 1e6), 0,  0,  0 )
+       the_connection.mav.ping_send(int(time.time() * 1e6), 0,  0,  0 )
        msg = the_connection.recv_match()
        time.sleep(0.5)
 
@@ -79,7 +78,7 @@ def setpos():
                                                                        the_connection.target_component,
                                                                        mavutil.mavlink.MAV_FRAME_GLOBAL_RELATIVE_ALT,0, int(0b110111111000), int(float(xx[0]) * 10 ** 7),
                                                                        int(float(xx[1]) * 10 ** 7), float(getalt()),
-                                                                       0, 0, 0))
+                                                                       0, 0, 0, 0, 0,0 ,0))
 
 
 def moveServo(odl, pin):
@@ -106,7 +105,7 @@ def arm(force=21196):
     the_connection.mav.command_long_send(the_connection.target_system, the_connection.target_component,
                                          mavutil.mavlink.MAV_CMD_NAV_GUIDED_ENABLE, 0 ,1, 0, 0, 0, 0, 0, 0)
     the_connection.mav.command_long_send(the_connection.target_system, the_connection.target_component,
-                                         mavutil.mavlink.MAV_CMD_COMPONENT_ARM_DISARM,0, 0, 1, force, 0, 0, 0, 0)
+                                         mavutil.mavlink.MAV_CMD_COMPONENT_ARM_DISARM,0, 1, force, 0, 0, 0, 0, 0)
     s = check_ok()
     if s:
         print("Uzbrojono pojazd")
@@ -143,11 +142,11 @@ def getfullpos():
     xx = the_connection.recv_match(type='GLOBAL_POSITION_INT', blocking=True).to_dict()
     print("Odebrano pozycje drona")
     print(xx)
-    lat =   xx['lat'] / 10 ** 7
-    log =   xx['lon'] / 10 ** 7
-    head =  xx['hdg'] / 100
-    alt =   xx['relative_alt'] / 1000
-    pos = "POS " + str(lat) + "," + str(log) + "," + head + "," + alt + "\n"
+    lat =   int(xx['lat']) / 10 ** 7
+    log =   int(xx['lon']) / 10 ** 7
+    head =  int(xx['hdg']) / 100
+    alt =   int(xx['relative_alt']) / 1000
+    pos = "POS " + str(lat) + "," + str(log) + "," + str(head) + "," + str(alt) + "\n"
     return pos
 
 def print_ok():
@@ -156,6 +155,7 @@ def print_ok():
         print("Odebrano komende poprawnie")
     else:
         print("Komena zwrocila status",rslt)
+    print()
 
 def watcher():
     global thrd_num
@@ -191,10 +191,16 @@ moveServo(500, PIN_2)
 moveServo(500, PIN_1)
 moveServo(1100, PIN_STRZAL)
 print("Ustawiono silniki/serwa w tryb IDLE")
-print("Czekam na GPS")
-the_connection.wait_gps_fix()
-print("GPS ustawiony")
+#print("Czekam na GPS")
+#the_connection.wait_gps_fix()
+#print("GPS ustawiony")
 # print("Serwo IDLE")
+
+the_connection.mav.command_long_send(the_connection.target_system, the_connection.target_component,
+                                         mavutil.mavlink.MAV_CMD_SET_MESSAGE_INTERVAL, 0 , 62, 1000000,0,0,0,0,0)
+                                         
+the_connection.mav.command_long_send(the_connection.target_system, the_connection.target_component,
+                                         mavutil.mavlink.MAV_CMD_SET_MESSAGE_INTERVAL, 0 , 33, 1000000,0,0,0,0,0)
 
 with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sck:
     sck.bind((HOST, PORT))
@@ -264,6 +270,10 @@ with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sck:
 
                 if data == "RTH":
                     rth()
+                    print_ok()
+                    
+                if data == "TAKEOFF":
+                    takeoff()
                     print_ok()
 
             except ConnectionError:
